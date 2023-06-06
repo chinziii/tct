@@ -63,8 +63,8 @@ for reservation in instances['Reservations']:
                     vpc_name = tag['Value']
                     break
         
-        # Retrieve last active time
-        last_active_time = instance['StateTransitionReason'].split(' ')[-1]
+        # Retrieve launch time
+        launch_time = instance['LaunchTime'].strftime('%Y-%m-%d %H:%M:%S')
         
         # Retrieve IP address (if available)
         ip_address = ''
@@ -72,14 +72,11 @@ for reservation in instances['Reservations']:
             ip_address = instance['PublicIpAddress']
         
         # Add instance information to list
-        instance_info.append([instance_name, instance_id, last_active_time, vpc_name, ip_address])
+        instance_info.append([instance_name, instance_id, launch_time, vpc_name, ip_address])
 
 # Write instance information to CSV file
 with open('instance_info.csv', 'w', newline='') as csvfile:
-    writer = csv.writer(csvfile)
-    writer.writerow(['Instance Name', 'Instance ID', 'Last Active Time', 'VPC Name', 'IP Address'])
+    writer = csv.writer(csvfile, delimiter='|')
+    writer.writerow(['Instance Name', 'Instance ID', 'Launch Time', 'VPC Name', 'IP Address'])
     for instance in instance_info:
         writer.writerow(instance)
-
-
-
