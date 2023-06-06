@@ -1,0 +1,84 @@
+#!/bin/bash
+
+# Set your AWS ECR repository name
+REPOSITORY_NAME="your-repository-name"
+
+# Get the list of image tags
+IMAGE_TAGS=$(aws ecr list-images --repository-name $REPOSITORY_NAME --query 'imageIds[].imageTag' --output text)
+
+# Create a temporary directory to store Dockerfiles
+TEMP_DIR=$(mktemp -d)
+
+# Iterate through the image tags and extract the base image information
+for TAG in $IMAGE_TAGS; do
+  # Download the Dockerfile for the current image tag
+  aws ecr get-download-url-for-layer --repository-name $REPOSITORY_NAME --layer-digest $TAG > $TEMP_DIR/Dockerfile_$TAG
+
+  # Extract the base image information from the Dockerfile
+  BASE_IMAGE=$(grep -m 1 "^FROM" $TEMP_DIR/Dockerfile_$TAG | awk '{print $2}')
+
+  # Print the image tag and its base image
+  echo "Image Tag: $TAG - Base Image: $BASE_IMAGE"
+done
+
+# Clean up the temporary directory
+rm -rf $TEMP_DIR
+
+
+
+
+
+import boto3
+import csv
+
+# Initialize Boto EC2 client
+ec2 = boto3.client('ec2')
+
+# Retrieve list of instances
+instances = ec2.describe_instances()
+
+# Initialize list to store instance information
+instance_info = []
+
+# Loop through instances and retrieve relevant information
+for reservation in instances['Reservations']:
+    for instance in reservation['Instances']:
+        # Retrieve instance name (if available)
+        instance_name = ''
+        for tag in instance['Tags']:
+            if tag['Key'] == 'Name':
+                instance_name = tag['Value']
+                break
+        
+        # Retrieve instance ID
+        instance_id = instance['InstanceId']
+        
+        # Retrieve VPC ID and name
+        vpc_id = instance['VpcId']
+        vpc_name = ''
+        vpc = ec2.describe_vpcs(VpcIds=[vpc_id])
+        if 'Tags' in vpc['Vpcs'][0]:
+            for tag in vpc['Vpcs'][0]['Tags']:
+                if tag['Key'] == 'Name':
+                    vpc_name = tag['Value']
+                    break
+        
+        # Retrieve last active time
+        last_active_time = instance['StateTransitionReason'].split(' ')[-1]
+        
+        # Retrieve IP address (if available)
+        ip_address = ''
+        if 'PublicIpAddress' in instance:
+            ip_address = instance['PublicIpAddress']
+        
+        # Add instance information to list
+        instance_info.append([instance_name, instance_id, last_active_time, vpc_name, ip_address])
+
+# Write instance information to CSV file
+with open('instance_info.csv', 'w', newline='') as csvfile:
+    writer = csv.writer(csvfile)
+    writer.writerow(['Instance Name', 'Instance ID', 'Last Active Time', 'VPC Name', 'IP Address'])
+    for instance in instance_info:
+        writer.writerow(instance)
+
+
