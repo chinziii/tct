@@ -1,0 +1,52 @@
+import boto3
+import csv
+
+# Initialize Boto EC2 client
+ec2 = boto3.client('ec2')
+
+# Retrieve list of instances
+instances = ec2.describe_instances()
+
+# Initialize list to store instance information
+instance_info = []
+
+# Loop through instances and retrieve relevant information
+for reservation in instances['Reservations']:
+    for instance in reservation['Instances']:
+        # Retrieve instance name (if available)
+        instance_name = ''
+        for tag in instance['Tags']:
+            if tag['Key'] == 'Name':
+                instance_name = tag['Value']
+                break
+        
+        # Retrieve instance ID
+        instance_id = instance['InstanceId']
+        
+        # Retrieve VPC ID and name
+        vpc_id = instance['VpcId']
+        vpc_name = ''
+        vpc = ec2.describe_vpcs(VpcIds=[vpc_id])
+        if 'Tags' in vpc['Vpcs'][0]:
+            for tag in vpc['Vpcs'][0]['Tags']:
+                if tag['Key'] == 'Name':
+                    vpc_name = tag['Value']
+                    break
+        
+        # Retrieve launch time
+        launch_time = instance['LaunchTime'].strftime('%Y-%m-%d %H:%M:%S')
+        
+        # Retrieve IP address (if available)
+        ip_address = ''
+        if 'PublicIpAddress' in instance:
+            ip_address = instance['PublicIpAddress']
+        
+        # Add instance information to list
+        instance_info.append([instance_name, instance_id, launch_time, vpc_name, ip_address])
+
+# Write instance information to CSV file
+with open('instance_info.csv', 'w', newline='') as csvfile:
+    writer = csv.writer(csvfile, delimiter='|')
+    writer.writerow(['Instance Name', 'Instance ID', 'Launch Time', 'VPC Name', 'IP Address'])
+    for instance in instance_info:
+        writer.writerow(instance)
