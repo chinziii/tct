@@ -1,0 +1,75 @@
+#!/usr/bin/env bats
+
+# Check if Dockerfile syntax is valid
+@test "Dockerfile syntax is valid" {
+  run docker build -t test-image .
+  [ "$status" -eq 0 ]
+}
+
+# Check if Python 3 is installed
+@test "Python 3 is installed" {
+  run docker run --rm test-image python3 --version
+  [ "$status" -eq 0 ]
+}
+
+# Check if OpenSSL is installed
+@test "OpenSSL is installed" {
+  run docker run --rm test-image openssl version
+  [ "$status" -eq 0 ]
+}
+
+# Check if Boto3 is installed and functional
+@test "Boto3 is installed and functional" {
+  run docker run --rm test-image python3 -c "import boto3; boto3.client('s3').list_buckets()"
+  [ "$status" -eq 0 ]
+}
+
+# Check if Requests is installed and functional
+@test "Requests is installed and functional" {
+  run docker run --rm test-image python3 -c "import requests; requests.get('https://www.google.com')"
+  [ "$status" -eq 0 ]
+}
+
+# if Setuptools is installed
+@test "Setuptools is installed" {
+  run docker run --rm test-image python3 -c "import setuptools"
+  [ "$status" -eq 0 ]
+}
+
+# Check if user is non-root
+@test "User is non-root" {
+  run docker run --rm test-image id -u
+  [ "$output" != "0" ]
+}
+
+# Check if /home/appuser/.local directory has correct ownership and permissions
+@test "/home/appuser/.local directory has correct ownership and permissions" {
+  run docker run --rm test-image sh -c "stat -c '%U:%G %a' /home/appuser/.local"
+  [ "$output" = "appuser:appgroup 700" ]
+}
+
+# Check if Docker image has any known vulnerabilities
+@test "Docker image has no known vulnerabilities" {
+  run trivy --exit-code 1 test-image
+  [ "$status" -eq 0 ]
+}
+
+# Check if Docker image has a small size
+@test "Docker image has a small size" {
+  run docker images --format "{{.Repository}} {{.Size}}" test-image
+  [ "$output" -lt "100MB" ]
+}
+
+# Check if Docker image works with other Docker images
+@test "Docker image works with other Docker images" {
+  run docker run --rm --name test-mysql -e MYSQL_ROOT_PASSWORD=password -d mysql:8.0
+  run docker run --rm --link test-mysql:mysql test-image python3 -c "import mysql.connector"
+  [ "$status" -eq 0 ]
+  run docker stop test-mysql
+}
+
+# Check if Docker image works with different versions of Python
+@test "Docker image works with different versions of Python" {
+  run docker run --rm python:3.8-alpine python3 -c "import boto3; boto3.client('s3').list_buckets()"
+  [ "$status" -eq 0 ]
+}
