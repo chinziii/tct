@@ -1,0 +1,70 @@
+import boto3
+import csv
+
+# Initialize Boto3 EC2 and VPC clients
+ec2 = boto3.client('ec2vpc_client = boto3.client('vpc')
+
+# Function to get VPC details
+def get_vpc_details(vpc_id):
+    vpc_response = vpc_client.describe_vpcs(VpcIds=[vpc_id])
+    vpc_name = ''
+    cidr_block = vpc_response['Vpcs'][0]['CidrBlock']
+    for tag in vpc_response['Vpcs'][0]['Tags']:
+        if tag['Key'] == 'Name':
+            vpc_name = tag['Value']
+            break
+    return vpc_name, cidr_block
+
+# Function to get peered VPC details
+def get_peered_vpc_details(vpc_id):
+    peering_connections = vpc_client.describe_vpc_peering_connections(
+        Filters=[{'Name': 'requester-vpc-info.vpc-id', 'Values': [vpc_id]}]
+    )
+    peered_vpcs = []
+    for connection in peering_connections['VpcPeeringConnections']:
+        if connection['Status']['Code'] == 'active':
+            peered_vpc_id = connection['AccepterVpcInfo']['VpcId']
+            peered_vpc_name, peered_vpc_cidr = get_vpc_details(peered_vpc_id)
+            peered_vpcs.append((peered_vpc_name, peered_vpc_cidr))
+    return peered_vpcs
+
+# Function to get traffic details between instances and peered VPCs
+def get_traffic_details(instance, peered_vpcs):
+    traffic_details = []
+    security_groups = instance['SecurityGroups']
+    for sg in security_groups:
+        sg_id = sg['GroupId']
+        sg_rules = ec2.describe_security_group_rules(Filters=[{'Name': 'group-id', 'Values': [sg_id]}])
+        for rule in sg_rules['SecurityGroupRules']:
+            for peered_vpc_name, peered_vpc_cidr in peered_vpcs:
+                if rule['CidrIpv4'] == peered_vpc_cidr:
+                    traffic_details.append({
+                        'Instance Name': instance['InstanceId'],
+                        'Source IP': instance['PrivateIpAddress'],
+                        'Destination IP': peered_vpc_cidr,
+                        'Port': rule['FromPort']
+                    })
+    return traffic_details
+
+# Get all EC2 instances
+response = ec2.describe_instances()
+
+# Filter instances with keyword 'Aqua'
+instances = []
+for reservation in response['Reservations']:
+    for instance in reservation['Instances']:
+        for tag in instance['Tags']:
+            if tag['Key'] == 'Name' and 'Aqua' in tag['Value']:
+                instances.append(instance)
+
+# Get traffic details and save to CSV
+with open('traffic_details.csv', 'w', newline='') as csvfile:
+    fieldnames = ['Instance Name', 'Source IP', 'Destination IP', 'Port']
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=',')
+    writer.writeheader()
+
+    for instance in instances:
+        peered_vpcs = get_peered_vpc_details(instance['VpcId'])
+        traffic_details = get_traffic_details(instance, peered_vpcs)
+        for detail in traffic_details:
+            writer.writerow(detail)
