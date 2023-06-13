@@ -1,0 +1,117 @@
+import boto3
+import csv
+
+# Replace with your region and search keyword
+region = 'us-west-2'
+search_keyword = 'Aqua'
+
+# Create EC2 client
+ec2 = boto3.client('ec2', region_name=region)
+
+# Create CSV file and write header row
+with open('networking_details.csv', mode='w', newline='') as file:
+    writer = csv.writer(file, delimiter='|')
+    writer.writerow(['Instance ID', 'VPC ID', 'Security Group ID', 'Security Group Name', 'Inbound Traffic', 'Outbound Traffic'])
+
+    # Get instances with search keyword in name or tags
+    response = ec2.describe_instances(
+        Filters=[
+            {
+                'Name': 'tag-value',
+                'Values': ['*' + search_keyword + '*']
+            },
+            {
+                'Name': 'instance-state-name',
+                'Values': ['running']
+            }
+        ]
+    )
+
+    # Loop through instances and get networking details
+    for reservation in response['Reservations']:
+        for instance in reservation['Instances']:
+            instance_id = instance['InstanceId']
+            vpc_id = instance['VpcId']
+            inbound_traffic = []
+            outbound_traffic = []
+
+            # Get security group details
+            security_groups = instance['SecurityGroups']
+            for sg in security_groups:
+                sg_id = sg['GroupId']
+                sg_name = sg['GroupName']
+
+                # Get inbound rules
+                ip_permissions = sg['IpPermissions']
+                for rule in ip_permissions:
+                    from_port = rule['FromPort']
+                    to_port = rule['ToPort']
+                    ip_ranges = rule['IpRanges']
+                    for ip_range in ip_ranges:
+                        cidr_ip = ip_range['CidrIp']
+                        inbound_traffic.append(f"{cidr_ip}:{from_port}-{to_port}")
+
+                # Get outbound rules
+                ip_permissions_egress = sg['IpPermissionsEgress']
+                for rule in ip_permissions_egress:
+                    from_port = rule['FromPort']
+                    to_port = rule['ToPort']
+                    ip_ranges = rule['IpRanges']
+                    for ip_range in ip_ranges:
+                        cidr_ip = ip_range['CidrIp']
+                        outbound_traffic.append(f"{cidr_ip}:{from_port}-{to_port}")
+
+            # Check if instance is accessed from or accessing another VPC
+            vpc_peering = []
+            response = ec2.describe_vpc_peering_connections(
+                Filters=[
+                    {
+                        'Name': 'accepter-vpc-info.vpc-id',
+                        'Values': [vpc_id]
+                    }
+                ]
+            )
+            peering_connections = response['VpcPeeringConnections']
+            for pc in peering_connections:
+                requester_cidr = pc['RequesterVpcInfo']['CidrBlock']
+                if instance['PrivateIpAddress'] in requester_cidr:
+                    vpc_peering.append(requester_cidr)
+
+            # Get VPC flow logs for the instance's VPC
+            response = ec2.describe_flow_logs(
+                Filters=[
+                    {
+                        'Name': 'resource-id',
+                        'Values': [vpc_id]
+                    },
+                    {
+                        'Name': 'log-destination-type',
+                        'Values': ['cloud-watch-logs']
+                    }
+                ]
+            )
+            flow_logs = response['FlowLogs']
+
+            # Check if any flow log has the instance's IP address as the source or destination
+            for log in flow_logs:
+                log_group_name = log['LogGroupName']
+                log_stream_name = log['LogStreamName']
+                response = ec2.get_log_events(
+                    logGroupName=log_group_name,
+                    logStreamName=log_stream_name,
+                    filterPattern=f"\"{instance['PrivateIpAddress']}\""
+                )
+                events = response['events']
+                for event in events:
+                    message = event['message']
+                    if instance['PrivateIpAddress'] in message:
+                        parts = message.split()
+                        outbound_traffic.append(f"{parts[3]}:{parts[4]}-{parts[5]}")
+                    else:
+                        parts = message.split()
+                        inbound_traffic.append(f"{parts[3]}:{parts[4]}-{parts[5]}")
+
+            # Write networking details to CSV file
+            with open('networking_details.csv', mode='a', newline='') as file:
+                writer = csv.writer(file, delimiter='|')
+                writer.writerow([instance_id, vpc_id, sg_id, sg_name, ';'.join(inbound_traffic), ';'.join(outbound_traffic), ';'.join(vpc_peering)])
