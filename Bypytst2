@@ -1,0 +1,40 @@
+def lint_dockerfile(request):
+    # Lint the Dockerfile before each test
+    lint_result = subprocess.run(['hadolint', 'Dockerfile'], capture_output=True)
+    assert lint_result.returncode == 0, f"Dockerfile failed linting:\n{lint_result.stderr.decode()}"
+
+
+def check_package_installed(image_id, package_name):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'apk', 'info', package_name], capture_output=True)
+    return result.returncode == 0
+
+
+def check_python_module_installed(image_id, module_name):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'python', '-c', f'import {module_name}'], capture_output=True)
+    return result.returncode == 0
+
+
+def check_user_exists(image_id, username):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'getent', 'passwd', username], capture_output=True)
+    return result.returncode == 0
+
+
+def check_group_exists(image_id, groupname):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'getent', 'group', groupname], capture_output=True)
+    return result.returncode == 0
+
+
+def check_ownership(image_id, path, expected_user, expected_group):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'stat', '-c', '%U:%G', path], capture_output=True, text=True)
+    if result.returncode == 0:
+        owner_group = result.stdout.strip()
+        return owner_group == f'{expected_user}:{expected_group}'
+    return False
+
+
+def is_image_root(image_id):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'id', '-u'], capture_output=True, text=True)
+    if result.returncode == 0:
+        uid = result.stdout.strip()
+        return uid == '0'
+    return False
