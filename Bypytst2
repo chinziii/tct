@@ -1,3 +1,97 @@
+import subprocess
+import pytest
+
+
+@pytest.fixture(scope='session')
+def hadolint_installed():
+    # Check if hadolint is installed
+    return check_command_exists('hadolint')
+
+
+@pytest.fixture(scope='session')
+def trivy_installed():
+    # Check if trivy is installed
+    return check_command_exists('trivy')
+
+
+@pytest.fixture(scope='session')
+def docker_image(hadolint_installed, trivy_installed):
+    # Set up
+    if not hadolint_installed:
+        install_hadolint()
+
+    # Build the Docker image
+    build_image()
+
+    # Perform security tests with trivy
+    if not trivy_installed:
+        install_trivy()
+
+    yield get_image_id()
+
+    # Clean up
+    cleanup_image()
+
+
+@pytest.fixture(autouse=True)
+def lint_dockerfile(request):
+    # Lint the Dockerfile before each test
+    lint_result = subprocess.run(['hadolint', 'Dockerfile'], capture_output=True)
+    assert lint_result.returncode == 0, f"Dockerfile failed linting:\n{lint_result.stderr.decode()}"
+
+
+def test_packages_installed(docker_image):
+    assert check_package_installed(docker_image, 'python'), "Python package is not installed"
+    assert check_package_installed(docker_image, 'tzdata'), "Tzdata package is not installed"
+    assert check_package_installed(docker_image, 'procps'), "Procps package is not installed"
+    assert check_package_installed(docker_image, 'openssl'), "Openssl package is not installed"
+    assert check_package_installed(docker_image, 'ca-certificates'), "Ca-certificates package is not installed"
+
+
+def test_python_modules_installed(docker_image):
+    assert check_python_module_installed(docker_image, 'requests'), "Requests module is not installed"
+    assert check_python_module_installed(docker_image, 'setuptools'), "Setuptools module is not installed"
+    assert check_python_module_installed(docker_image, 'boto3'), "Boto3 module is not installed"
+
+
+def test_user_group_existence(docker_image):
+    assert check_user_exists(docker_image, 'appuser'), "User 'appuser' does not exist"
+    assert check_group_exists(docker_image, 'appgroup'), "Group 'appgroup' does not exist"
+
+
+def test_file_directory_ownership(docker_image):
+    assert check_ownership(docker_image, '/usr/share/local/', 'appuser', 'appgroup'), "Incorrect ownership for directory"
+
+
+def test_image_rootless(docker_image):
+    assert not is_image_root(docker_image), "Image is running as root"
+
+
+def check_command_exists(command):
+    return subprocess.run(['command', '-v', command], capture_output=True).returncode == 0
+
+
+def install_hadolint():
+    subprocess.run(['apk', 'add', '--no-cache', 'hadolint'], check=True)
+
+
+def build_image():
+    subprocess.run(['docker', 'build', '-t', 'test-image', '.'], check=True)
+
+
+def cleanup_image():
+    subprocess.run(['docker', 'rmi', 'test-image'], check=True)
+
+
+def install_trivy():
+    subprocess.run(['apk', 'add', '--no-cache', 'trivy'], check=True)
+
+
+def get_image_id():
+    image_id = subprocess.run(['docker', 'images', '-q', 'test-image'], capture_output=True, text=True).stdout.strip()
+    assert image_id, "Failed to retrieve image ID"
+    return image_id
+
 def lint_dockerfile(request):
     # Lint the Dockerfile before each test
     lint_result = subprocess.run(['hadolint', 'Dockerfile'], capture_output=True)
