@@ -1,0 +1,111 @@
+import os
+import subprocess
+import pytest
+
+
+def test_dockerfile():
+    # Check for the presence of hadolint and install if not present
+    hadolint_exists = check_command_exists('hadolint')
+    if not hadolint_exists:
+        install_hadolint()
+
+    # Lint the Dockerfile
+    lint_result = subprocess.run(['hadolint', 'Dockerfile'], capture_output=True)
+    assert lint_result.returncode == 0, f"Dockerfile failed linting:\n{lint_result.stderr.decode()}"
+
+    # Build the Docker image
+    build_image()
+
+    # Perform security tests with trivy
+    trivy_exists = check_command_exists('trivy')
+    if not trivy_exists:
+        install_trivy()
+
+    security_test_result = subprocess.run(['trivy', 'image', 'test-image'], capture_output=True)
+    assert security_test_result.returncode == 0, f"Security test failed:\n{security_test_result.stderr.decode()}"
+
+    # Perform package and module tests
+    image_id = get_image_id()
+    assert check_package_installed(image_id, 'python'), "Python package is not installed"
+    assert check_package_installed(image_id, 'tzdata'), "Tzdata package is not installed"
+    assert check_package_installed(image_id, 'procps'), "Procps package is not installed"
+    assert check_package_installed(image_id, 'openssl'), "Openssl package is not installed"
+    assert check_package_installed(image_id, 'ca-certificates'), "Ca-certificates package is not installed"
+
+    assert check_python_module_installed(image_id, 'requests'), "Requests module is not installed"
+    assert check_python_module_installed(image_id, 'setuptools'), "Setuptools module is not installed"
+    assert check_python_module_installed(image_id, 'boto3'), "Boto3 module is not installed"
+
+    # Perform user and group existence tests
+    assert check_user_exists(image_id, 'appuser'), "User 'appuser' does not exist"
+    assert check_group_exists(image_id, 'appgroup'), "Group 'appgroup' does not exist"
+
+    # Perform ownership tests
+    assert check_ownership(image_id, '/usr/share/local/', 'appuser', 'appgroup'), "Incorrect ownership for directory"
+
+    # Check if the image is rootless
+    assert not is_image_root(image_id), "Image is running as root"
+
+    # Clean up the Docker image
+    cleanup_image()
+
+
+def check_command_exists(command):
+    return subprocess.run(['command', '-v', command], capture_output=True).returncode == 0
+
+
+def install_hadolint():
+    subprocess.run(['apk', 'add', '--no-cache', 'hadolint'], check=True)
+
+
+def build_image():
+    subprocess.run(['docker', 'build', '-t', 'test-image', '.'], check=True)
+
+
+def install_trivy():
+    subprocess.run(['apk', 'add', '--no-cache', 'trivy'], check=True)
+
+
+def get_image_id():
+    image_id = subprocess.run(['docker', 'images', '-q', 'test-image'], capture_output=True, text=True).stdout.strip()
+    assert image_id, "Failed to retrieve image ID"
+    return image_id
+
+
+def check_package_installed(image_id, package):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'sh', '-c', f"apk info -e {package}"], capture_output=True)
+    return result.returncode == 0
+
+
+def check_python_module_installed(image_id, module):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'sh', '-c', f"
+    
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'sh', '-c', f"python -c 'import {module}'"], capture_output=True)
+    return result.returncode == 0
+
+
+def check_user_exists(image_id, username):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'sh', '-c', f"getent passwd {username}"], capture_output=True)
+    return result.returncode == 0
+
+
+def check_group_exists(image_id, groupname):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'sh', '-c', f"getent group {groupname}"], capture_output=True)
+    return result.returncode == 0
+
+
+def check_ownership(image_id, path, username, groupname):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'sh', '-c', f"stat -c '%U:%G' {path}"], capture_output=True)
+    output = result.stdout.decode().strip()
+    expected_ownership = f"{username}:{groupname}"
+    return output == expected_ownership
+
+
+def is_image_root(image_id):
+    result = subprocess.run(['docker', 'run', '--rm', image_id, 'sh', '-c', 'whoami'], capture_output=True)
+    return result.stdout.strip() == b'root'
+
+
+def cleanup_image():
+    subprocess.run(['docker', 'rmi', 'test-image'], check=True)
+
