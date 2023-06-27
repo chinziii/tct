@@ -1,0 +1,68 @@
+#!/usr/bin/env bats
+
+# Define the image name
+IMAGE_NAME="myapp"
+
+# Setup: Build the Docker image
+setup() {
+  docker build -t $IMAGE_NAME .
+}
+
+# Teardown: Remove the Docker image
+teardown() {
+  docker rmi $IMAGE_NAME
+}
+
+# Test: Dockerfile linting with hadolint
+@test "Dockerfile should pass hadolint" {
+  run hadolint Dockerfile
+  [ "$status" -eq 0 ]
+}
+
+# Test: Docker image should exist
+@test "Docker image should be built" {
+  run docker images $IMAGE_NAME
+  [ "$status" -eq 0 ]
+}
+
+# Test: Docker image should not have any high or critical vulnerabilities
+@test "Docker image should pass Trivy security scan" {
+  run trivy image --severity HIGH,CRITICAL --exit-code 1 $IMAGE_NAME
+  [ "$status" -eq 0 ]
+}
+
+# Test: Docker image should have Python installed
+@test "Python should be installed" {
+  run docker run $IMAGE_NAME python3 --version
+  [ "$status" -eq 0 ]
+}
+
+# Test: Docker image should have pip installed
+@test "pip should be installed" {
+  run docker run $IMAGE_NAME pip3 --version
+  [ "$status" -eq 0 ]
+}
+
+# Test: Docker image should have Consul installed
+@test "Consul should be installed" {
+  run docker run $IMAGE_NAME consul version
+  [ "$status" -eq 0 ]
+}
+
+# Test: Docker image should have appuser
+@test "appuser should exist" {
+  run docker run $IMAGE_NAME id -u appuser
+  [ "$status" -eq 0 ]
+}
+
+# Test: Docker image should have appgroup
+@test "appgroup should exist" {
+  run docker run $IMAGE_NAME id -g appuser
+  [ "$status" -eq 0 ]
+}
+
+# Test: Docker image should have the necessary directories
+@test "Necessary directories should exist" {
+  run docker run $IMAGE_NAME ls /usr/local/bin/ConsulClient /app/publish /etc/ssl/cnxloyalty-certs /home/appuser
+  [ "$status" -eq 0 ]
+}
