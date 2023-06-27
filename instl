@@ -1,0 +1,18 @@
+# Install Hadolint
+echo "Installing Hadolint..."
+wget -O /usr/local/bin/hadolint https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+chmod +x /usr/local/bin/hadolint
+
+# Install BATS
+echo "Installing BATS..."
+git clone https://github.com/bats-core/bats-core.git
+cd bats-core
+./install.sh /usr/local
+
+# Install Trivy
+echo "Installing Trivy..."
+wget -O trivy.tar.gz https://github.com/aquasecurity/trivy/releases/latest/download/trivy_$(uname -s)_$(uname -m).tar.gz
+tar zxvf trivy.tar.gz
+mv trivy /usr/local/bin/
+
+echo "Installation complete!"
