@@ -42,7 +42,7 @@ increment_semantic_version() {
 }
 
 # Example usage:
-versions=("v50.0.0" "v50.50.1" "v0.50.0" "v0.0.50" "v50.50.50")
+versions=("v50.0.0" "v50.50.1" "v0.50.1" "v50.50.50")
 
 for version in "${versions[@]}"; do
     incremented_version=$(increment_semantic_version "$version")
