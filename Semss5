@@ -1,0 +1,40 @@
+#!/bin/bash
+
+increment_semantic_version() {
+    local version=$1
+    local major
+    local minor
+    local patch
+
+    if [[ $version =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+        major="${BASH_REMATCH[1]}"
+        minor="${BASH_REMATCH[2]}"
+        patch="${BASH_REMATCH[3]}"
+
+        # Increment the version
+        if ((patch < 50)); then
+            patch=$((patch + 1))
+        elif ((minor < 50)); then
+            patch=0
+            minor=$((minor + 1))
+        elif ((major < 50)); then
+            patch=0
+            minor=0
+            major=$((major + 1))
+        else
+            echo "v50.50.50 (limit reached)"
+            return
+        fi
+
+        echo "v${major}.${minor}.${patch}"
+    else
+        echo "Invalid version format: $version"
+    fi
+}
+
+# Example usage:
+input_version="v0.0.0"
+incremented_version=$(increment_semantic_version "$input_version")
+echo "Provided: $input_version"
+echo "Expected: v0.0.1"
+echo "Result:   $incremented_version"
